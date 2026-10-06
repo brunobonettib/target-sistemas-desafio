@@ -8,6 +8,25 @@ Aplicação de console em C# desenvolvida para o desafio técnico da Target Sist
 - Permite lançar entrada ou saída de estoque para os produtos do JSON.
 - Calcula juros de 2,5% ao dia a partir de um valor e uma data de vencimento.
 
+## Arquitetura
+
+O projeto foi organizado com Clean Architecture:
+
+```text
+src/
+  DesafioTarget.Domain/         Regras de negócio, entidades e value objects
+  DesafioTarget.Application/    Casos de uso e interfaces de repositório
+  DesafioTarget.Infrastructure/ Implementações de leitura JSON e armazenamento em memória
+  DesafioTarget.Console/        Interface de console e composição da aplicação
+```
+
+As camadas internas não dependem das externas:
+
+- `Domain` não conhece console, JSON ou arquivos.
+- `Application` usa contratos para acessar dados.
+- `Infrastructure` implementa esses contratos.
+- `Console` recebe dados do usuário, chama os casos de uso e exibe resultados.
+
 ## Regras atendidas
 
 ### Comissão
@@ -35,7 +54,7 @@ Aplicação de console em C# desenvolvida para o desafio técnico da Target Sist
 É necessário ter o .NET instalado.
 
 ```bash
-dotnet run
+dotnet run --project src/DesafioTarget.Console
 ```
 
 Depois, escolha uma opção no menu:
