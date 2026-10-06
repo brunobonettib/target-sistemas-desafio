@@ -43,14 +43,26 @@ public sealed class ValidateBusinessRulesUseCase
 
     private static void ValidateStockMovements()
     {
-        var product = new ProductStock(1, "Produto teste", 10);
-        product.ApplyMovement(StockMovementType.Inbound, 5);
-        Ensure(product.Quantity == 15, "Entrada deve somar ao estoque.");
+        var stockRepository = new ValidationStockRepository([
+            new ProductStock(1, "Produto teste", 10)
+        ]);
+        var movementRepository = new ValidationStockMovementRepository();
+        var useCase = new RegisterStockMovementUseCase(stockRepository, movementRepository);
 
-        product.ApplyMovement(StockMovementType.Outbound, 3);
-        Ensure(product.Quantity == 12, "Saída deve subtrair do estoque.");
+        var inbound = useCase.Execute(new RegisterStockMovementRequest(1, "Entrada teste", 1, StockMovementType.Inbound, 5));
+        Ensure(inbound.FinalStock == 15, "Entrada deve somar ao estoque.");
 
-        EnsureError<BusinessRuleException>(() => product.ApplyMovement(StockMovementType.Outbound, 99), "Saída maior que estoque deve ser bloqueada.");
+        var outbound = useCase.Execute(new RegisterStockMovementRequest(2, "Saída teste", 1, StockMovementType.Outbound, 3));
+        Ensure(outbound.FinalStock == 12, "Saída deve subtrair do estoque.");
+
+        EnsureError<BusinessRuleException>(() => useCase.Execute(new RegisterStockMovementRequest(2, "ID repetido", 1, StockMovementType.Inbound, 1)), "Identificador repetido deve ser bloqueado.");
+        EnsureError<BusinessRuleException>(() => useCase.Execute(new RegisterStockMovementRequest(3, "Saída maior que estoque", 1, StockMovementType.Outbound, 99)), "Saída maior que estoque deve ser bloqueada.");
+        EnsureError<BusinessRuleException>(() => useCase.Execute(new RegisterStockMovementRequest(4, " ", 1, StockMovementType.Inbound, 1)), "Descrição vazia deve ser bloqueada.");
+        EnsureError<BusinessRuleException>(() => useCase.Execute(new RegisterStockMovementRequest(5, "Produto inexistente", 999, StockMovementType.Inbound, 1)), "Produto inexistente deve ser bloqueado.");
+        EnsureError<BusinessRuleException>(() => useCase.Execute(new RegisterStockMovementRequest(6, "Quantidade inválida", 1, StockMovementType.Inbound, 0)), "Quantidade zerada deve ser bloqueada.");
+
+        var reusedIdentifier = useCase.Execute(new RegisterStockMovementRequest(4, "Entrada após erro", 1, StockMovementType.Inbound, 1));
+        Ensure(reusedIdentifier.FinalStock == 13, "Identificador de movimentação inválida não deve ser consumido.");
     }
 
     private static void ValidateInterest()
@@ -84,5 +96,50 @@ public sealed class ValidateBusinessRulesUseCase
         }
 
         throw new BusinessRuleException(message);
+    }
+
+    private sealed class ValidationStockRepository : IStockRepository
+    {
+        private readonly Dictionary<int, ProductStock> _products;
+
+        public ValidationStockRepository(IEnumerable<ProductStock> products)
+        {
+            _products = products.ToDictionary(product => product.Code, product => product.Clone());
+        }
+
+        public IReadOnlyList<ProductStock> ListProducts()
+        {
+            return _products.Values.Select(product => product.Clone()).ToList();
+        }
+
+        public ProductStock? GetByCode(int productCode)
+        {
+            return _products.TryGetValue(productCode, out var product)
+                ? product.Clone()
+                : null;
+        }
+
+        public void Update(ProductStock product)
+        {
+            _products[product.Code] = product.Clone();
+        }
+    }
+
+    private sealed class ValidationStockMovementRepository : IStockMovementRepository
+    {
+        private readonly HashSet<int> _identifiers = [];
+
+        public bool IdentifierExists(int identifier)
+        {
+            return _identifiers.Contains(identifier);
+        }
+
+        public void RegisterIdentifier(int identifier)
+        {
+            if (!_identifiers.Add(identifier))
+            {
+                throw new BusinessRuleException("Já existe uma movimentação com esse identificador.");
+            }
+        }
     }
 }
